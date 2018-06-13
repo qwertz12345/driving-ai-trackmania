@@ -1,109 +1,81 @@
-import os
+import pathlib
+import time
 
-import cv2
 import numpy as np
+from PIL import Image
 
+import grabscreen
 from getkeys import key_check
-from getFrame import *
 
 
-# TODO: SAVE TIMINGS TO SAVE FILE
-# TODO: CHANGE FILE NAME PATTERN AND DEBUG!!!
+# TODO: DEBUG
 
 
-def create_screenshot(framethread):
-    screenshot_full = framethread.returnFrame()
-    velocity = screenshot_full[-29:, -60:-7]
-    screenshot = screenshot_full[200:400, 25:-25]
-    screenshot = cv2.resize(screenshot, (0, 0), fx=0.2, fy=0.2, interpolation=cv2.INTER_AREA)
-    return screenshot, velocity
+def pause(time_adjustment):
+    print("Paused. Press 'r' to resume ...")
+    pause_start_time = time.time()
+    stop = False
+    time.sleep(0.5)
+    while True:
+        keys = key_check()
+        time.sleep(0.5)
+        if "O" and "P" in keys:
+            print("Stop recording and saving ...")
+            stop = True
+            break
+        elif "R" in keys:
+            print("Unpausing ...")
+            break
+    pause_stop_time = time.time()
+
+    return time_adjustment + pause_stop_time - pause_start_time, stop
 
 
-def stats(loop_times):
-    loop_times = [t for t in loop_times if t != 0]
-    m = "mean " + str(np.mean(loop_times)) + " seconds, "
-    s = "std " + str(np.std(loop_times)) + " seconds"
-    return m + s
+def save(training_data, run_name):
+    """
+    Saves images as png, key and time data as npy.
+    Reduce data size by resizing and compressing (losslessly) the images before saving.
+    :param training_data: Tuple of the image, keys and time stamps
+    :param run_name: usually the track name
+    """
+    #                                           convert BGR -> RGB
+    screenshots = [Image.fromarray(elem[0][..., ::-1])  # .resize((400, 215), resample=Image.HAMMING)
+                   for elem in training_data]
+    keys_and_times = np.array([(elem[1], elem[2]) for elem in training_data])
+    time_diffs = np.diff(np.concatenate((np.array([0.0]), keys_and_times[:, 1])))
+
+    training_directory = r"E:\Trackmania Data\training_data_new\\" + run_name + "_" + str(
+        time.strftime("%Y%m%d-%H%M%S"))
+    pathlib.Path(training_directory + r"\\screenshots").mkdir(parents=True)
+    with open(training_directory + r"\\" + "keys_timings.txt", "w") as text_file:
+        for k, line in enumerate(keys_and_times):
+            text_file.write("{0:5}     {1:20s}     {2:f}       {3:f}\n".format(k, str(line[0]), line[1], time_diffs[k]))
+    for k, im in enumerate(screenshots):
+        im.save(training_directory + r"\\screenshots\\" + str(k) + "_" + str(keys_and_times[k][0]) + ".png")
 
 
 def main(file_name):
-    framethread = getFrameThread(8, 30, 800, 600, "TrackMania Nations Forever").start()
-    # file_index = 1
-    training_directory = os.path.abspath(r"E:\Trackmania Data\training_data_new")
-    # while True:
-    #     file_name = 'training_data-{}.npy'.format(file_index)
-    #     if os.path.isfile(os.path.join(training_directory, file_name)):
-    #         print('File exists, moving along', file_index)
-    #         file_index += 1
-    #     else:
-    #         print('File does not exist, starting fresh!', file_index)
-    #         break
-
-    loop_times = []
+    screen = grabscreen.grab_screen(region=(8, 200, 800, 430), window_title="TrackMania Nations Forever")
     training_data = []
-    paused = True
     _ = key_check()
-    print("Press t to start")
-    driving_keys = ("W", "A", "S", "D")
-    last_time = time.time()
+    time_adjustment, stop_signal = pause(time.time())
+    print("Recording ...")
 
-    while True:     # main loop
+    while True:
         keys = key_check()
-        if 'T' in keys:
-            if paused:
-                paused = False
-                print("Unpausing")
-                time.sleep(1 / 2)
-                last_time = time.time()
-            else:
-                print("Pausing")
-                paused = True
-                time.sleep(1 / 2)
-        elif 'O' and 'P' in keys and paused:
-            print("Saving and Stopping")
-            # file_name = 'training_data-{}.npy'.format(file_index)
-            np.save(os.path.join(training_directory, file_name), training_data)
-            print(stats(loop_times))
-            break
-        elif 'M' in keys and paused:
-            print(stats(loop_times))
-            time.sleep(1 / 2)
+        if "T" in keys:
+            time_adjustment, stop_signal = pause(time_adjustment)
+            if stop_signal:
+                break
+        screenshot = screen.getFrame()
+        training_data.append((screenshot, keys, time.time() - time_adjustment))
 
-        correct_driving_keys = True
-        if not paused:
-            for key in keys:
-                if key not in driving_keys:
-                    correct_driving_keys = False
-            if len(keys) <= 2 and correct_driving_keys:
-                screenshot, velocity = create_screenshot(framethread)
-                training_data.append([screenshot, velocity, keys])
-                if len(training_data) % 500 == 0:
-                    print(len(training_data))
-
-            new_time = time.time()
-            current_loop_time = new_time - last_time
-            fixed_loop_time = 0.035
-            difference = fixed_loop_time - current_loop_time
-            if difference > 0:
-                time.sleep(difference)
-            # loop_times.append(current_loop_time)
-            loop_times.append(time.time() - last_time)  # actual loop times
-
-            last_time = new_time
-
-    framethread.stopNow()
-    with open(os.path.join(training_directory, "stats.txt"), "w") as text_file:
-        text_file.write(stats(loop_times))
+    screen.clear()
+    save(training_data, file_name)
 
 
 if __name__ == '__main__':
-    main("newest")
-    # framet = getFrameThread(8, 30, 800, 600, "TrackMania Nations Forever").start()
-    # time.sleep(1)
-    # scr, vel = create_screenshot(framet)
-    # cv2.imshow('image', scr)
-    # cv2.waitKey(0)
-    # cv2.imshow("2", vel)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-    # framet.stopNow()
+    print("Keys: 't' to pause \n"
+          "      'r' to resume \n"
+          "      'o' and 'p' simultaneously while paused to save and exit.")
+    main(input("Enter run name: "))
