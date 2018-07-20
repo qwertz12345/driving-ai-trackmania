@@ -1,0 +1,31 @@
+STRUCTURE
+
+    create_training_data_new
+        save timings to save file
+    process_data_four_velocity
+        recognize_numbers
+    training_velo
+    run_model_velo
+        recognize_numbers
+
+
+
+
+
+
+daten in "E:\Trackmania Data"
+
+
+
+Probleme beim Installieren von TensorFlow:
+
+fo40225 commented on 3 Mar
+"The CPU lack AVX instruction can cause this error.
+
+I have built tensorflow wheel without AVX.
+
+https://github.com/fo40225/tensorflow-windows-wheel/tree/master/1.6.0/py36/CPU/sse2
+
+I wish this .whl may help you."
+
+in https://github.com/tensorflow/tensorflow/issues/17386

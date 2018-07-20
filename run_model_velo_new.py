@@ -5,7 +5,7 @@ from PIL import Image
 from keras.models import load_model
 
 from getFrame import *
-from create_training_data_new import stats, create_screenshot
+from record_data import stats, create_screenshot
 from getkeys import key_check
 from recognize_numbers import recognize
 from directkeys import PressKey, ReleaseKey, W, A, S, D
@@ -143,17 +143,17 @@ def main():
         if prediction[0] > 0.5 and prediction[0] > prediction[1]:
             prediction[0] = 1
             prediction[1] = 0
-        elif prediction[1] > prediction[0] and prediction[1] > 0.25:
+        elif prediction[1] > prediction[0] and prediction[1] > 0.5:
             prediction[0] = 0
             prediction[1] = 1
         else:
             prediction[0] = 0
             prediction[1] = 0
 
-        if prediction[2] > 0.25 and prediction[2] > prediction[3]:
+        if prediction[2] > 0.5 and prediction[2] > prediction[3]:
             prediction[2] = 1
             prediction[3] = 0
-        elif prediction[3] > prediction[2] and prediction[3] > 0.25:
+        elif prediction[3] > prediction[2] and prediction[3] > 0.5:
             prediction[3] = 1
             prediction[2] = 0
         else:

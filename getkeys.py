@@ -4,7 +4,7 @@ import win32api as wapi
 
 keyList = ["\b"]
 # for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ 123456789,.'£$/\\":
-for char in "ADOPRSTW":
+for char in "ADOPRSTWZ":
     keyList.append(char)
 
 

@@ -1,15 +1,12 @@
-import pathlib
 import time
 from multiprocessing import Pool
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from grabscreen import grab_screen
 from getkeys import key_check
-
-
-# TODO: DEBUG
+from grabscreen import grab_screen
 
 
 def pause(time_adjustment):
@@ -32,9 +29,27 @@ def pause(time_adjustment):
     return time_adjustment + pause_stop_time - pause_start_time, stop
 
 
-def save_image(name, image):
-    im = Image.fromarray(image[..., ::-1])
-    im.save(name)
+# def resize_and_crop_image(image):
+#     """
+#     :param image:
+#     :return: also convert to grayscale
+#     """
+#     edited = image[0].crop(box=(0, 0, 800, 320)).resize((400, 160), Image.LANCZOS)
+#     return edited, image[1]
+#
+#
+# def resizing_cropping(images):
+#     pool = Pool()
+#     resized = pool.map(resize_and_crop_image, images)
+#     pool.close()
+#     pool.join()
+#     print("Images resized.")
+#     return resized
+
+
+def save_image(path, image):
+    im = Image.fromarray(image[..., ::-1]).crop(box=(0, 0, 800, 320)).resize((400, 160))  # , Image.LANCZOS)
+    im.save(path)
 
 
 def save(training_data, run_name):
@@ -47,21 +62,25 @@ def save(training_data, run_name):
 
     keys_and_times = np.array([(elem[1], elem[2]) for elem in training_data])
     time_diffs = np.diff(np.concatenate((np.array([0.0]), keys_and_times[:, 1])))
-    training_directory = r"E:\Trackmania Data\training_data_new\\" + run_name + "_" + str(
-        time.strftime("%Y%m%d-%H%M%S"))
-    pathlib.Path(training_directory + r"\\screenshots").mkdir(parents=True)
-    with open(training_directory + r"\\" + "keys_timings.txt", "w") as text_file:
+    training_directory = Path(r"E:\Trackmania Data\data") / Path(
+        "{}_{}".format(run_name, time.strftime("%Y%m%d-%H%M%S")))
+    (training_directory / Path("screenshots")).mkdir(parents=True)
+    with (training_directory / Path("keys_timings.txt")).open("w") as text_file:
         for k, line in enumerate(keys_and_times):
-            text_file.write("{0:5}     {1:20s}     {2:f}       {3:f}\n".format(k, str(line[0]), line[1], time_diffs[k]))
+            text_file.write("{0:5}     {1:20s}     {2:f}     {3:f}\n".format(k, str(line[0]), line[1], time_diffs[k]))
 
-    image_names = []
+    image_paths = []
     for k, _ in enumerate(training_data):
-        image_names.append(training_directory + r"\\screenshots\\" + str(k) + "_" + str(keys_and_times[k][0]) + ".png")
+        image_paths.append(training_directory / Path("screenshots")
+                           / Path("{:05d}_{}.png".format(k, str(keys_and_times[k][0]).strip("[]"))))
 
-    pool = Pool()
-    pool.starmap(save_image, [(image_names[k], e[0]) for k, e in enumerate(training_data)])
+    pool = Pool(processes=3)
+    pool.starmap(save_image, [(image_paths[k], e[0]) for k, e in enumerate(training_data)])
     pool.close()
     pool.join()
+
+    # for k, e in enumerate(training_data):
+    #     save_image(image_paths[k], e[0])
 
 
 def main(file_name):
@@ -81,6 +100,7 @@ def main(file_name):
         training_data.append((screenshot, keys, time.time() - time_adjustment))
 
     screen.clear()
+    # training_data = resizing_cropping(training_data)
     save(training_data, file_name)
 
 
@@ -88,5 +108,5 @@ if __name__ == '__main__':
     save_name = input("Enter run name: ")
     print("Keys: 't' to pause \n"
           "      'r' to resume \n"
-          "      'o' and 'p' simultaneously while paused to save and exit.")
+          "      'o' and 'p' while paused to save and exit.")
     main(save_name)

@@ -89,9 +89,9 @@ def training(name, epochs, old_model=""):
     y = np.array(y)
     split = int(0.8 * len(x))
     x_train = x[:split]
-    x_test = x[split + 1:]
+    x_val = x[split:]
     y_train = y[:split]
-    y_test = y[split + 1:]
+    y_val = y[split:]
 
     tensboard = TensorBoard(log_dir="logs/{}".format(name), histogram_freq=0, batch_size=32,
                             write_graph=False, write_grads=False, write_images=False, embeddings_freq=0,
@@ -109,7 +109,7 @@ def training(name, epochs, old_model=""):
     model.fit_generator(train_datagen.flow(x_train, y_train, batch_size=32),
                         steps_per_epoch=x_train.shape[0] // 32,
                         epochs=epochs,
-                        validation_data=(x_test, y_test),
+                        validation_data=(x_val, y_val),
                         callbacks=[tensboard, checkpoint],
                         initial_epoch=starting_epoch)
     model.save("{}-{}.h5".format(name, epochs))
