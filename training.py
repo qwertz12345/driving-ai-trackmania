@@ -1,21 +1,21 @@
 from collections import Counter
 from pathlib import Path
-from time import strftime
 from re import findall
+from time import strftime
+
 from keras import backend as K
 from keras import layers
+from keras.applications.mobilenetv2 import MobileNetV2
 from keras.callbacks import ModelCheckpoint
 from keras.callbacks import TensorBoard
 from keras.layers import GlobalAveragePooling2D
 from keras.models import Model
-from keras.preprocessing.image import ImageDataGenerator
-from keras.utils import plot_model, get_custom_objects
-from keras.utils import print_summary
-from keras.optimizers import Adam
-from keras.optimizers import Adadelta
-from keras.applications.mobilenet import MobileNet
-from keras_applications import mobilenet
 from keras.models import load_model
+from keras.optimizers import Adadelta
+from keras.preprocessing.image import ImageDataGenerator
+from keras.utils import get_custom_objects
+from keras.utils import print_summary
+from keras_applications.mobilenet_v2 import relu6
 
 
 def custom_accs(class_indices):
@@ -38,6 +38,12 @@ def custom_accs(class_indices):
         class_acc_tensor = K.cast(K.equal(class_id_true, class_id_preds), 'int32') * accuracy_mask
         class_acc = K.sum(class_acc_tensor) / K.maximum(K.sum(accuracy_mask), 1)
         return class_acc
+
+    # def AW_class_recall(y_true, y_pred):
+    #     class_id_true = K.argmax(y_true, axis=-1)
+    #     class_id_preds = K.argmax(y_pred, axis=-1)
+    #     accuracy_mask = K.cast(K.equal(class_id_true, class_indices["AW"]), "int32")
+    #     class_recall_tensor = K.cast(K.equal(class_))
 
     return {"A_class_accuracy": A_class_accuracy, "AW_class_accuracy": AW_class_accuracy}
 
@@ -82,41 +88,58 @@ def custom_accs(class_indices):
 #     model = Model(img_input, output)
 #     return model
 
-def create_model():
-    base_model = MobileNet(
-        input_shape=(32, 32, 1),
+# def create_model():
+#     base_model = MobileNet(
+#         input_shape=(32, 32, 1),
+#         include_top=False,
+#         weights=None
+#     )
+#     x = base_model.output
+#     x = GlobalAveragePooling2D()(x)
+#     x = layers.Dense(1024, activation='relu')(x)
+#     predictions = layers.Dense(6, activation='softmax')(x)
+#     model = Model(inputs=base_model.input, outputs=predictions)
+#     return model
+
+def create_model(height_width):
+    base_model = MobileNetV2(
+        input_shape=height_width + (1,),
         include_top=False,
-        weights=None
+        weights=None,
     )
     x = base_model.output
     x = GlobalAveragePooling2D()(x)
-    x = layers.Dense(1024, activation='relu')(x)
-    predictions = layers.Dense(6, activation='softmax')(x)
+    x = layers.Dense(512, activation='relu')(x)
+    predictions = layers.Dense(5, activation='softmax')(x)
     model = Model(inputs=base_model.input, outputs=predictions)
     return model
 
 
-def generators(training_dir, validation_dir, batch_size):
-    train_datagen = ImageDataGenerator(
-        rescale=1 / 255,
-        # channel_shift_range=2,
-        # rotation_range=2,
-        # shear_range=2,
-        # width_shift_range=2,
-        # height_shift_range=2
-    )
+def generators(training_dir, validation_dir, batch_size, height_width, augment):
+    if augment:
+        train_datagen = ImageDataGenerator(
+            rescale=1 / 255,
+            channel_shift_range=2,
+            rotation_range=2,
+            shear_range=2,
+            width_shift_range=2,
+            height_shift_range=2
+        )
+    else:
+        train_datagen = ImageDataGenerator(rescale=1 / 255)
+
     test_datagen = ImageDataGenerator(rescale=1 / 255)
 
     train_generator = train_datagen.flow_from_directory(
         training_dir,
-        target_size=(32, 32),  # height, width
+        target_size=height_width,  # height, width
         color_mode="grayscale",
         batch_size=batch_size,
         class_mode="categorical"
     )
     validation_generator = test_datagen.flow_from_directory(
         validation_dir,
-        target_size=(32, 32),
+        target_size=height_width,
         color_mode="grayscale",
         batch_size=batch_size,
         class_mode="categorical"
@@ -127,16 +150,18 @@ def generators(training_dir, validation_dir, batch_size):
 def training_run(
         name,
         base_data_dir,
+        height_width,
         epochs,
+        augment=False,
         old_model=None,
-        batch_size=20,
+        batch_size=32,
         data_dir="training_val_data",
-        checkpoint_period=2
-        ):
+        checkpoint_period=1
+):
     """
-
+    :param height_width: tuple (height, width)
     :param name: string, overwritten if old_model is specified
-    :param base_dir: string
+    :param base_data_dir: string
     :param epochs:
     :param old_model: string of path of checkpoint
     :param batch_size: overwritten if old_model is specified
@@ -145,13 +170,13 @@ def training_run(
     :return:
     """
 
-    training_dir = Path(base_data_dir) / data_dir / "training_data"
-    validation_dir = Path(base_data_dir) / data_dir / "validation_data"
+    training_dir = Path(base_data_dir) / data_dir / "train"
+    validation_dir = Path(base_data_dir) / data_dir / "val"
 
     if old_model:
         batch_size = int(findall(r"\d\d", Path(old_model).parent.parent.name.split(".")[1])[0])
 
-    train_generator, validation_generator = generators(training_dir, validation_dir, batch_size)
+    train_generator, validation_generator = generators(training_dir, validation_dir, batch_size, height_width, augment)
 
     counter = Counter(train_generator.classes)
     print(
@@ -164,7 +189,8 @@ def training_run(
     print("Class indices:", train_generator.class_indices)
     print(
         "Class weights:", "   |   ".join(
-        ["{}: {}".format(cls, class_weights[ind]) for cls, ind in train_generator.class_indices.items()])
+            ["{}: {}".format(cls, class_weights[ind]) for cls, ind in train_generator.class_indices.items()]
+        )
     )
 
     if old_model:
@@ -174,25 +200,37 @@ def training_run(
             {
                 "A_class_accuracy": custom_accs(train_generator.class_indices)["A_class_accuracy"],
                 "AW_class_accuracy": custom_accs(train_generator.class_indices)["AW_class_accuracy"],
-                'relu6': mobilenet.relu6
+                'relu6': relu6
             }
         )
         model = load_model(old_model)
         initial_epoch = int(Path(old_model).name.split(".")[1].split("-")[0])
-    else:   # new start
+    else:  # new start
         initial_epoch = 0
-        model = create_model()
+        model = create_model(height_width)
         model.summary()
-        full_name = name + ".batch_size{}.epochs{}-start_time{}".format(batch_size, epochs, strftime("%Y%m%d-%H%M%S"))
-        run_dir = Path(r"E:\Trackmania Data\runs") / Path("run_" + full_name)
+        full_name = name + "__aug-{}_batch_size{}-start_time{}".format(augment, batch_size, strftime("%Y%m%d-%H%M%S"))
+        run_dir = Path(base_data_dir) / "runs" / Path("run_" + full_name)
         run_dir.mkdir()
 
-        plot_model(model, to_file=str(run_dir / "model_plot.png"))
         with open(run_dir / "model_summary.txt", "w") as f:
             print_summary(model, print_fn=lambda x: f.write(x + "\n"))
 
         with open(run_dir / "class_indices.txt", "w") as f:
             f.write(str(train_generator.class_indices))
+
+        with open(run_dir / "parameters.txt", "w") as f:
+            f.write("name-{}_aug-{}_base_data_dir-{}_height_width-{}_{}_{}_{}_data_dir-{}_{}".format(
+                name,
+                augment,
+                base_data_dir,
+                height_width,
+                epochs,
+                old_model,
+                batch_size,
+                data_dir,
+                checkpoint_period
+            ))
 
         model.compile(
             loss='categorical_crossentropy',
@@ -212,7 +250,8 @@ def training_run(
         period=checkpoint_period
     )
 
-    tensboard = TensorBoard(log_dir=r"E:\Trackmania Data\logs\{}".format(full_name), batch_size=batch_size)
+    tensb_dir = Path(base_data_dir) / "logs" / full_name
+    tensboard = TensorBoard(log_dir=str(tensb_dir), batch_size=batch_size, write_graph=True)
 
     # print(model.evaluate_generator(train_generator))
     history = model.fit_generator(
@@ -235,13 +274,15 @@ def main():
     base_data_dir = r"E:\Trackmania Data"
     # hist =
     _ = training_run(
-        name="mobilenet",
+        name="mobilenetV2aug",
         base_data_dir=base_data_dir,
-        epochs=55,
-        old_model=r"E:\Trackmania Data\runs\run_mobilenet.batch_size32.epochs55-start_time20180720-021954\checkpoints\checkpoint.12-0.51.hdf5",
-        batch_size=32,
-        # data_dir="tiny_training_data",
+        height_width=(50, 50),
+        epochs=111,
+        # old_model=r"E:\Trackmania Data\runs\run_mobilenetV2newprocessdata10000.batch_size32-start_time20180728-140902\checkpoints\checkpoint.04-2.22.hdf5",
+        # batch_size=32,
+        data_dir="processed_data_10000_size-50x50",
         # checkpoint_period=10000000000
+        augment=True
     )
 
 
