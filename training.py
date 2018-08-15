@@ -6,6 +6,7 @@ from time import strftime
 from keras import backend as K
 from keras import layers
 from keras.applications.mobilenetv2 import MobileNetV2
+from keras.callbacks import LambdaCallback
 from keras.callbacks import ModelCheckpoint
 from keras.callbacks import TensorBoard
 from keras.layers import GlobalAveragePooling2D
@@ -174,7 +175,7 @@ def training_run(
     validation_dir = Path(base_data_dir) / data_dir / "val"
 
     if old_model:
-        batch_size = int(findall(r"\d\d", Path(old_model).parent.parent.name.split(".")[1])[0])
+        batch_size = int(findall(r"\d\d", Path(old_model).parent.parent.name.split("_")[3])[0])
 
     train_generator, validation_generator = generators(training_dir, validation_dir, batch_size, height_width, augment)
 
@@ -236,7 +237,8 @@ def training_run(
             loss='categorical_crossentropy',
             # optimizer=Adam(),
             optimizer=Adadelta(),
-            metrics=[custom_accs(train_generator.class_indices)["A_class_accuracy"],
+            metrics=["acc",
+                     custom_accs(train_generator.class_indices)["A_class_accuracy"],
                      custom_accs(train_generator.class_indices)["AW_class_accuracy"]]
         )
 
@@ -253,6 +255,10 @@ def training_run(
     tensb_dir = Path(base_data_dir) / "logs" / full_name
     tensboard = TensorBoard(log_dir=str(tensb_dir), batch_size=batch_size, write_graph=True)
 
+    time_print_callback = LambdaCallback(
+        on_epoch_end=lambda epoch, logs: print("Current time: {}".format(strftime("%a, %d %b %Y %H:%M:%S")))
+    )
+
     # print(model.evaluate_generator(train_generator))
     history = model.fit_generator(
         train_generator,
@@ -262,11 +268,10 @@ def training_run(
         validation_steps=validation_generator.samples // batch_size,
         verbose=2,
         class_weight=class_weights,
-        callbacks=[checkpointer, tensboard],
+        callbacks=[checkpointer, tensboard, time_print_callback],
         initial_epoch=initial_epoch
     )
     model.save(run_dir / "model_save")
-
     return history
 
 
@@ -278,7 +283,7 @@ def main():
         base_data_dir=base_data_dir,
         height_width=(50, 50),
         epochs=111,
-        # old_model=r"E:\Trackmania Data\runs\run_mobilenetV2newprocessdata10000.batch_size32-start_time20180728-140902\checkpoints\checkpoint.04-2.22.hdf5",
+        old_model=r"E:\Trackmania Data\runs\run_mobilenetV2augaug-True_batch_size32-start_time20180730-032337\checkpoints\checkpoint.65-0.27.hdf5",
         # batch_size=32,
         data_dir="processed_data_10000_size-50x50",
         # checkpoint_period=10000000000

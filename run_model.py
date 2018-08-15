@@ -120,5 +120,6 @@ def main(checkpoint_path, show_timings=False):
 
 if __name__ == '__main__':
     main(
-        r"E:\Trackmania Data\runs\run_mobilenetV2augaug-True_batch_size32-start_time20180730-032337\checkpoints\checkpoint.14-0.74.hdf5"
+        r"E:\Trackmania Data\runs\run_mobilenetV2augaug-True_batch_size32-start_time20180730-032337\checkpoints\
+        checkpoint.65-0.27.hdf5"
     )
